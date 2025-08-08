@@ -211,6 +211,7 @@ class SSOConsultantEnhanced:
             "status": "Available",
             "summary": self.analytics_data['data_summary'],
             "current_risk": self.analytics_data['current_prediction'],
+            "safety_kpis": self.analytics_data.get('safety_kpis', {}),
             "top_recommendations": {
                 "immediate": self.analytics_data['recommendations']['immediate_actions'][:3],
                 "preventive": self.analytics_data['recommendations']['preventive_measures'][:3]
@@ -246,10 +247,18 @@ def index():
             padding: 0;
             box-sizing: border-box;
         }
-        
+
+        :root {
+            --brand-blue: #005387;
+            --brand-blue-dark: #00406a;
+            --brand-green: #237F52;
+            --brand-green-dark: #1e6a43;
+            --text-inverse: #ffffff;
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--brand-blue) 0%, var(--brand-green) 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -310,8 +319,8 @@ def index():
         }
         
         .user-message {
-            background: #667eea;
-            color: white;
+            background: var(--brand-blue);
+            color: var(--text-inverse);
             margin-left: 20%;
         }
         
@@ -324,7 +333,7 @@ def index():
         /* Enhanced HTML Response Formatting Styles */
         .assistant-message h3 {
             color: #2c3e50;
-            border-bottom: 2px solid #3498db;
+            border-bottom: 2px solid var(--brand-blue);
             padding-bottom: 8px;
             margin-top: 20px;
             margin-bottom: 15px;
@@ -349,8 +358,8 @@ def index():
         }
 
         .risk-table thead {
-            background: linear-gradient(135deg, #3498db, #2980b9);
-            color: white;
+            background: linear-gradient(135deg, var(--brand-blue), var(--brand-blue-dark));
+            color: var(--text-inverse);
         }
 
         .risk-table th {
@@ -399,8 +408,8 @@ def index():
         }
 
         .risk-low {
-            background: linear-gradient(135deg, #27ae60, #229954);
-            color: white;
+            background: linear-gradient(135deg, var(--brand-green), var(--brand-green-dark));
+            color: var(--text-inverse);
             padding: 4px 12px;
             border-radius: 20px;
             font-size: 0.8em;
@@ -412,7 +421,7 @@ def index():
 
         .analysis-section {
             background: #f8f9fa;
-            border-left: 4px solid #3498db;
+            border-left: 4px solid var(--brand-blue);
             padding: 20px;
             margin: 20px 0;
             border-radius: 0 8px 8px 0;
@@ -420,7 +429,7 @@ def index():
 
         .recommendation-box {
             background: linear-gradient(135deg, #e8f5e8, #f0f8f0);
-            border: 1px solid #27ae60;
+            border: 1px solid var(--brand-green);
             border-radius: 8px;
             padding: 20px;
             margin: 20px 0;
@@ -467,17 +476,17 @@ def index():
         
         .send-button {
             padding: 15px 30px;
-            background: #667eea;
-            color: white;
+            background: var(--brand-blue);
+            color: var(--text-inverse);
             border: none;
             border-radius: 10px;
             cursor: pointer;
             font-size: 16px;
             font-weight: bold;
         }
-        
+
         .send-button:hover {
-            background: #5a6fd8;
+            background: var(--brand-blue-dark);
         }
         
         .send-button:disabled {
@@ -504,8 +513,8 @@ def index():
         }
         
         .suggestion-chip:hover {
-            background: #667eea;
-            color: white;
+            background: var(--brand-blue);
+            color: var(--text-inverse);
             transform: translateY(-2px);
         }
         
@@ -537,7 +546,7 @@ def index():
         
         .analytics-status {
             background: #e8f5e8;
-            border: 1px solid #4caf50;
+            border: 1px solid var(--brand-green);
             border-radius: 10px;
             padding: 15px;
             margin-bottom: 20px;
@@ -617,12 +626,14 @@ def index():
             .then(response => response.json())
             .then(data => {
                 const statusDiv = document.getElementById('analyticsStatus');
+                const format = v => (v !== null && v !== undefined ? v.toFixed(2) : 'N/A');
                 if (data.status === 'Available') {
+                    const k = data.safety_kpis || {};
                     statusDiv.innerHTML = `
                         <strong>✅ Sistema Analítico Activo</strong><br>
-                        📊 ${data.summary.total_records} registros procesados | 
-                        🎯 Riesgo actual: ${data.current_risk.risk_level} 
-                        (${(data.current_risk.confidence * 100).toFixed(1)}% confianza)
+                        📊 ${data.summary.total_records} registros procesados |
+                        🎯 Riesgo actual: ${data.current_risk.risk_level} (${(data.current_risk.confidence * 100).toFixed(1)}% confianza)<br>
+                        IR: ${format(k.incident_rate)} | SR: ${format(k.severity_rate)} | DART: ${format(k.dart_rate)}
                     `;
                     statusDiv.style.background = '#e8f5e8';
                 } else {

@@ -155,8 +155,43 @@ class AccidentAnalytics:
             day_counts = self.df['dia_semana'].value_counts().sort_index()
             days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
             analysis['risk_by_time']['weekly'] = {days[k]: v for k, v in day_counts.items() if k < 7}
-        
+
         return analysis
+
+    def calculate_safety_kpis(self):
+        """Calcular KPIs de seguridad estándar (IR, SR, DART)."""
+        if self.df is None or self.df.empty:
+            return {}
+
+        # Intentar detectar columnas relevantes de manera flexible
+        cols_upper = {c.upper(): c for c in self.df.columns}
+        hours_col = next((cols_upper[c] for c in cols_upper if 'HORA' in c and 'TRAB' in c), None)
+        lost_col = next((cols_upper[c] for c in cols_upper if 'DIA' in c and ('PERD' in c or 'BAJA' in c)), None)
+        restricted_col = next((cols_upper[c] for c in cols_upper if 'RESTR' in c), None)
+        transfer_col = next((cols_upper[c] for c in cols_upper if 'TRANS' in c or 'REASIG' in c), None)
+
+        total_hours = self.df[hours_col].fillna(0).sum() if hours_col else 0
+        total_cases = len(self.df)
+        days_lost = self.df[lost_col].fillna(0).sum() if lost_col else 0
+        days_restricted = self.df[restricted_col].fillna(0).sum() if restricted_col else 0
+        days_transferred = self.df[transfer_col].fillna(0).sum() if transfer_col else 0
+
+        if total_hours <= 0:
+            return {
+                "incident_rate": None,
+                "severity_rate": None,
+                "dart_rate": None,
+            }
+
+        incident_rate = (total_cases * 200000) / total_hours
+        severity_rate = (days_lost * 200000) / total_hours
+        dart_rate = ((days_lost + days_restricted + days_transferred) * 200000) / total_hours
+
+        return {
+            "incident_rate": round(incident_rate, 2),
+            "severity_rate": round(severity_rate, 2),
+            "dart_rate": round(dart_rate, 2),
+        }
 
     def get_key_indicators(self, analysis_results):
         """Extrae y formatea los indicadores clave para el LLM."""
@@ -180,6 +215,9 @@ class AccidentAnalytics:
         # 4. Severidad
         if 'severity_distribution' in analysis_results:
             indicators['severity_distribution'] = analysis_results['severity_distribution']
+
+        # 5. KPIs estándar de seguridad
+        indicators['safety_kpis'] = self.calculate_safety_kpis()
 
         return indicators
     
@@ -326,7 +364,8 @@ class AccidentAnalytics:
 
         # Obtener indicadores clave
         key_indicators = self.get_key_indicators(patterns)
-        
+        safety_kpis = self.calculate_safety_kpis()
+
         return {
             "data_summary": {
                 "total_records": len(self.df),
@@ -334,6 +373,7 @@ class AccidentAnalytics:
                 "data_quality": self._assess_data_quality()
             },
             "key_indicators": key_indicators,
+            "safety_kpis": safety_kpis,
             "risk_analysis": patterns,
             "current_prediction": risk_prediction,
             "recommendations": recommendations,
