@@ -1,0 +1,39 @@
+# SSO Consultant Enhanced - Dependencias Completas
+# ================================================
+
+# Framework web
+Flask==3.0.0
+
+# Cliente OpenAI
+openai>=1.98.0
+
+# Manejo de variables de entorno
+python-dotenv==1.0.0
+
+# Cliente HTTP para pruebas
+requests==2.31.0
+
+# === ANÁLISIS DE DATOS Y MACHINE LEARNING ===
+
+# Análisis de datos
+pandas==2.1.4
+numpy==1.24.3
+openpyxl==3.1.2
+
+# Machine Learning
+scikit-learn==1.3.2
+xgboost==2.0.3
+
+# Análisis estadístico
+scipy==1.11.4
+
+# Visualización
+matplotlib==3.8.2
+plotly==5.17.0
+
+# Procesamiento de fechas
+python-dateutil==2.8.2
+
+# Utilidades ML
+joblib==1.3.2
+tiktoken==0.7.0
