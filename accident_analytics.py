@@ -159,43 +159,75 @@ class AccidentAnalytics:
         return analysis
 
     def calculate_safety_kpis(self):
-        """Calcular KPIs de seguridad estándar (IR, SR, DART)."""
-        if self.df is None or self.df.empty:
-            return {}
+    """Calcular KPIs de seguridad estándar (TRIR/IR, SR, DART) con base 200,000."""
+    if self.df is None or self.df.empty:
+        return {"incident_rate": None, "severity_rate": None, "dart_rate": None}
 
-        # Intentar detectar columnas relevantes de manera flexible
-        cols_upper = {c.upper(): c for c in self.df.columns}
-        hours_col = next((cols_upper[c] for c in cols_upper if 'HORA' in c and 'TRAB' in c), None)
-        lost_col = next((cols_upper[c] for c in cols_upper if 'DIA' in c and ('PERD' in c or 'BAJA' in c)), None)
-        restricted_col = next((cols_upper[c] for c in cols_upper if 'RESTR' in c), None)
-        transfer_col = next((cols_upper[c] for c in cols_upper if 'TRANS' in c or 'REASIG' in c), None)
+    df = self.df.copy()
 
-        total_hours = self.df[hours_col].fillna(0).sum() if hours_col else 0
-        total_cases = len(self.df)
+    # 1) Deduplicación por id de incidente si existe
+    id_col = next((c for c in df.columns if 'id' in c.lower() and 'inci' in c.lower()), None)
+    if id_col:
+        df = df.drop_duplicates(subset=[id_col])
 
-        lost_series = self.df[lost_col].fillna(0) if lost_col else pd.Series([0] * len(self.df))
-        restricted_series = self.df[restricted_col].fillna(0) if restricted_col else pd.Series([0] * len(self.df))
-        transfer_series = self.df[transfer_col].fillna(0) if transfer_col else pd.Series([0] * len(self.df))
+    # 2) Helpers para localizar columnas por keywords (robusto a encabezados)
+    def pick_col(keys_all=(), keys_any=()):
+        for c in df.columns:
+            cu = c.upper()
+            if all(k in cu for k in keys_all) and (not keys_any or any(k in cu for k in keys_any)):
+                return c
+        return None
 
-        days_lost = lost_series.sum()
-        dart_cases = ((lost_series > 0) | (restricted_series > 0) | (transfer_series > 0)).sum()
+    def num_series(colname):
+        if not colname:
+            return pd.Series(0, index=df.index)
+        return pd.to_numeric(df[colname], errors='coerce').fillna(0)
 
-        if total_hours <= 0:
-            return {
-                "incident_rate": None,
-                "severity_rate": None,
-                "dart_rate": None,
-            }
+    hours_col = pick_col(keys_all=('HORA',), keys_any=('TRAB', 'LABOR', 'WORK'))
+    lost_col  = pick_col(keys_all=('DIA',),  keys_any=('PERD', 'BAJA', 'LOST'))
+    restr_col = pick_col(keys_any=('RESTR', 'RESTRIC', 'RESTRING', 'RESTRICT'))
+    transf_col= pick_col(keys_any=('TRANS', 'REASIG', 'TRANSFER'))
 
-        incident_rate = (total_cases * 200000) / total_hours
-        severity_rate = (days_lost * 200000) / total_hours
-        dart_rate = (dart_cases * 200000) / total_hours
+    lost_s  = num_series(lost_col)
+    restr_s = num_series(restr_col)
+    transf_s= num_series(transf_col)
 
-        return {
-            "incident_rate": round(incident_rate, 2),
-            "severity_rate": round(severity_rate, 2),
-            "dart_rate": round(dart_rate, 2),
-        }
+    # 3) Total de horas: si hay un único valor >0 repetido en todas las filas, úsalo como total;
+    #    si hay per-row hours, suma.
+    total_hours = 0.0
+    if hours_col:
+        hs = pd.to_numeric(df[hours_col], errors='coerce').fillna(0)
+        uniq = np.unique(hs[hs > 0])
+        total_hours = float(uniq[0]) if len(uniq) == 1 else float(hs.sum())
+
+    # 4) Recordables: si hay flag explícito úsalo; si no, toma todas las filas como registrables
+    rec_col = next((c for c in df.columns if 'REGIST' in c.upper() or 'RECORDABLE' in c.upper()), None)
+    if rec_col:
+        recordables = int((pd.to_numeric(df[rec_col], errors='coerce').fillna(0) > 0).sum())
+    else:
+        recordables = int(len(df))
+
+    # 5) DART = número de CASOS con días de baja o restricción o traslado (no sumar días)
+    dart_cases = int(((lost_s > 0) | (restr_s > 0) | (transf_s > 0)).sum())
+
+    # 6) Severity Rate = días perdidos * 200,000 / horas
+    days_lost = float(lost_s.sum())
+
+    if total_hours <= 0:
+        return {"incident_rate": None, "severity_rate": None, "dart_rate": None}
+
+    BASE = 200000.0  # 100 FTE * 40h * 50 sem (estándar BLS/OSHA)
+    trir = (recordables * BASE) / total_hours
+    dart = (dart_cases * BASE) / total_hours
+    sr   = (days_lost   * BASE) / total_hours
+
+    # Nota: tasas muy altas suelen indicar horas mal cargadas en establecimientos chicos. :contentReference[oaicite:2]{index=2}
+    return {
+        "incident_rate": round(trir, 2),
+        "severity_rate": round(sr, 2),
+        "dart_rate": round(dart, 2),
+    }
+
 
     def get_key_indicators(self, analysis_results):
         """Extrae y formatea los indicadores clave para el LLM."""
