@@ -7,15 +7,18 @@ Sistema de consultoría SSO con capacidades de análisis predictivo y reducción
 import os
 from flask import Flask, render_template_string, request, jsonify
 from openai import OpenAI
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 from accident_analytics import AccidentAnalytics
 import json
 from datetime import datetime
+from typing import Dict, List, Any
 import pdfplumber
 import glob
-from knowledge_base import KnowledgeBase
+# from knowledge_base import KnowledgeBase
+from engines.indicators_engine import IndicatorsEngine
+from engines.response_builder import ResponseBuilder
 
-load_dotenv()
+load_dotenv(find_dotenv(), override=True)
 
 app = Flask(__name__)
 
@@ -23,15 +26,23 @@ class SSOConsultantEnhanced:
     """Consultor SSO Mejorado con Analytics Predictivo"""
     
     def __init__(self, api_key: str):
-        self.client = OpenAI(api_key=api_key)
+        # Initialize DeepSeek client (OpenAI-compatible)
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url="https://api.deepseek.com"
+        )
         self.analytics = AccidentAnalytics()
-        self.knowledge_base = KnowledgeBase(self.client)
+        self.knowledge_base = None  # KnowledgeBase(self.client)
         self.analytics_data = None
-        print("✅ SSO Consultant Enhanced inicializado")
+        self.indicators_engine = None
+        self.response_builder = None
+        print("✅ SSO Consultant Enhanced inicializado con DeepSeek API")
         
         # Cargar datos analíticos y normativos al inicio
         self._load_analytics_data()
-        self.knowledge_base.build()
+        # if self.knowledge_base:
+        #     self.knowledge_base.build()
+        self._initialize_analytics_engines()
     
     def _load_analytics_data(self):
         """Cargar datos analíticos"""
@@ -49,50 +60,22 @@ class SSOConsultantEnhanced:
     def process_query(self, message: str) -> str:
         """Procesa la consulta del usuario de forma dinámica y contextual."""
         try:
-            # Identificar si la consulta es analítica y qué dimensiones solicita
-            analytics_keywords = {
-                'risk_by_area': ['área', 'zona', 'ubicación'],
-                'risk_by_position': ['puesto', 'cargo', 'rol'],
-                'risk_by_shift': ['turno', 'horario'],
-                'risk_by_cause': ['causa', 'motivo', 'razón'],
-                'risk_by_body_part': ['parte del cuerpo', 'lesión en'],
-                'severity_distribution': ['severidad', 'gravedad', 'consecuencia'],
-                'predicción': ['predecir', 'pronóstico', 'futuro'],
-                'resumen': ['resumen', 'general', 'overview']
-            }
-
-            requested_analyses = set()
-            for key, keywords in analytics_keywords.items():
-                if any(keyword in message.lower() for keyword in keywords):
-                    requested_analyses.add(key)
-
-            is_analytics_query = bool(requested_analyses)
-
-            # Generar contexto del sistema
-            system_context = self._build_system_context(message, is_analytics_query, requested_analyses)
-
-            # Si es una consulta analítica, añadir un resumen dinámico
-            if is_analytics_query and self.analytics_data:
-                dynamic_summary = self.analytics.generate_dynamic_executive_summary(self.analytics_data['risk_analysis'])
-                message_with_context = f"{message}\n\n--- DATOS RELEVANTES ---\n{dynamic_summary}"
+            # Clasificar intención de la consulta
+            intent = self._classify_intent(message)
+            
+            # Detectar análisis específicos solicitados
+            requested_analyses = self._detect_requested_analyses(message)
+            
+            # Si tenemos motores estandarizados, usar respuesta estructurada
+            if self.response_builder and intent in ["DATA", "MIXED"]:
+                return self._generate_standardized_response(message, intent, requested_analyses)
             else:
-                message_with_context = message
-
-            response = self.client.chat.completions.create(
-                model="gpt-4-turbo-preview",
-                messages=[
-                    {"role": "system", "content": system_context},
-                    {"role": "user", "content": message_with_context}
-                ],
-                temperature=0.7,
-                max_tokens=2000
-            )
-
-            return response.choices[0].message.content
-
+                # Fallback al sistema original
+                return self._generate_legacy_response(message, intent, requested_analyses)
+            
         except Exception as e:
             return f'''
-            <div style="color: red; border: 1px solid red; padding: 10px; border-radius: 5px;">
+            <div class="error-message">
             <h3>Error en el Sistema</h3>
             <p>No se pudo procesar su consulta.</p>
             <p><small>Error: {str(e)}</small></p>
@@ -109,8 +92,9 @@ class SSOConsultantEnhanced:
         """
 
         # Contexto Normativo Relevante (RAG)
-        relevant_context = self.knowledge_base.retrieve_relevant_chunks(query)
-        base_context += relevant_context
+        # relevant_context = self.knowledge_base.retrieve_relevant_chunks(query)
+        # if relevant_context:
+        #     base_context += relevant_context
 
         # Contexto Analítico
         if include_analytics and self.analytics_data:
@@ -145,13 +129,17 @@ class SSOConsultantEnhanced:
         
         base_context += """
 
-        INSTRUCCIONES DE RESPUESTA:
-        1.  **Rol:** Actúa como un consultor de riesgos experto, no como un simple chatbot.
-        2.  **Justificación:** SIEMPRE justifica tus recomendaciones cruzando los datos (ej. "Dado que el 25% de los accidentes son por caídas...") con la normativa (ej. "...la Ley 29783, Artículo X, exige...").
-        3.  **Accionabilidad:** Proporciona recomendaciones claras, específicas y accionables. Distingue entre medidas correctivas (inmediatas) y preventivas (a largo plazo).
-        4.  **Formato HTML:** Utiliza el formato HTML profesional definido a continuación para estructurar tus respuestas. Usa encabezados, tablas, listas y elementos de énfasis para máxima claridad.
-        5.  **Indicadores Clave:** Aunque el usuario no los pida, incluye SIEMPRE un resumen de los indicadores clave (meses, áreas, causas) en un formato visualmente atractivo (ej. una tabla o una lista destacada), para dar un contexto rápido y valioso.
-
+        IMPORTANTE: Siempre proporciona recomendaciones específicas y accionables.
+        Cita los artículos normativos relevantes cuando sea aplicable.
+        Si mencionas estadísticas o datos, especifica la fuente y el período.
+        Estructura tu respuesta de manera clara y profesional.
+        
+        FORMATO DE RESPUESTA PREFERIDO:
+        - Resumen ejecutivo con hallazgos clave
+        - Datos específicos con fuentes
+        - Recomendaciones priorizadas
+        - Próximos pasos concretos
+        
         FORMATO HTML REQUERIDO:
         - <h3> para títulos principales (ej. "Análisis de Riesgo por Área").
         - <h4> para subtítulos (ej. "Recomendaciones Preventivas").
@@ -163,7 +151,6 @@ class SSOConsultantEnhanced:
         """
         
         return base_context
-
     
     def _format_patterns_for_context(self):
         """Formatear patrones para el contexto"""
@@ -202,6 +189,28 @@ class SSOConsultantEnhanced:
         
         return '; '.join(formatted) if formatted else "Recomendaciones en desarrollo"
     
+    def _initialize_analytics_engines(self):
+        """Inicializa los motores de análisis estandarizados"""
+        try:
+            # Verificar que tenemos analytics y datos
+            if hasattr(self, 'analytics') and self.analytics and hasattr(self.analytics, 'df') and self.analytics.df is not None:
+                print(f"📊 {len(self.analytics.df)} registros procesados")
+                self.indicators_engine = IndicatorsEngine(self.analytics.df)
+                self.response_builder = ResponseBuilder(self.indicators_engine)
+                print("✅ Motores de análisis estandarizados inicializados")
+            else:
+                print("⚠️ No se pudieron inicializar motores - datos no disponibles")
+                print(f"   - Analytics: {hasattr(self, 'analytics')}")
+                print(f"   - Analytics existe: {hasattr(self, 'analytics') and self.analytics is not None}")
+                if hasattr(self, 'analytics') and self.analytics:
+                    print(f"   - DataFrame: {hasattr(self.analytics, 'df')}")
+                    if hasattr(self.analytics, 'df'):
+                        print(f"   - DataFrame no None: {self.analytics.df is not None}")
+        except Exception as e:
+            print(f"❌ Error inicializando motores de análisis: {e}")
+            import traceback
+            traceback.print_exc()
+    
     def get_analytics_summary(self):
         """Obtener resumen analítico"""
         if not self.analytics_data:
@@ -217,6 +226,164 @@ class SSOConsultantEnhanced:
                 "preventive": self.analytics_data['recommendations']['preventive_measures'][:3]
             }
         }
+    
+    def _classify_intent(self, message: str) -> str:
+        """Clasifica la intención de la consulta"""
+        message_lower = message.lower()
+        
+        # Palabras clave para clasificación
+        legal_keywords = ['ley', 'artículo', 'normativa', 'reglamento', 'decreto', 'obligación', 'multa', 'sanción']
+        data_keywords = ['datos', 'estadística', 'análisis', 'indicador', 'kpi', 'tendencia', 'gráfico', 'tabla']
+        admin_keywords = ['reindexar', 'actualizar', 'configurar', 'estado', 'sistema']
+        
+        legal_score = sum(1 for keyword in legal_keywords if keyword in message_lower)
+        data_score = sum(1 for keyword in data_keywords if keyword in message_lower)
+        admin_score = sum(1 for keyword in admin_keywords if keyword in message_lower)
+        
+        if admin_score > 0:
+            return "ADMIN"
+        elif data_score > legal_score:
+            return "DATA"
+        elif legal_score > 0:
+            return "LEGAL"
+        else:
+            return "MIXED"
+    
+    def _detect_requested_analyses(self, message: str) -> List[str]:
+        """Detecta qué análisis específicos se solicitan"""
+        message_lower = message.lower()
+        analyses = []
+        
+        analysis_keywords = {
+            "volumen": ["accidentes por año", "tendencia", "volumen", "cantidad", "temporal"],
+            "perfil": ["formas", "causas", "agentes", "partes del cuerpo", "severidad", "tipo"],
+            "impacto": ["días perdidos", "costos", "impacto económico", "financiero"],
+            "factores_humanos": ["edad", "experiencia", "antigüedad", "horas trabajadas", "turno"],
+            "kpis": ["índice", "frecuencia", "gravedad", "accidentabilidad", "IF", "IG", "IA"],
+            "medidas": ["medidas", "implementación", "cumplimiento", "efectividad", "correctivas"]
+        }
+        
+        for analysis_type, keywords in analysis_keywords.items():
+            if any(keyword in message_lower for keyword in keywords):
+                analyses.append(analysis_type)
+        
+        return analyses if analyses else ["volumen", "perfil"]
+    
+    def _generate_standardized_response(self, message: str, intent: str, requested_analyses: List[str]) -> str:
+        """Genera respuesta usando el sistema estandarizado"""
+        try:
+            # Obtener respuesta estructurada en JSON
+            json_response = self.response_builder.build_response(message, intent, requested_analyses)
+            
+            # Convertir JSON a HTML para la interfaz actual
+            html_response = self._convert_json_to_html(json_response)
+            
+            return html_response
+            
+        except Exception as e:
+            return f"<div class='error-message'>Error generando respuesta estandarizada: {str(e)}</div>"
+    
+    def _generate_legacy_response(self, message: str, intent: str, requested_analyses: List[str]) -> str:
+        """Genera respuesta usando el sistema original (fallback)"""
+        try:
+            # Construir contexto del sistema
+            include_analytics = intent in ["DATA", "MIXED"]
+            system_context = self._build_system_context(
+                message, 
+                include_analytics=include_analytics,
+                requested_analyses=set(requested_analyses)
+            )
+            
+            # Preparar mensaje con contexto dinámico
+            if include_analytics and self.analytics_data:
+                dynamic_summary = self.analytics.generate_dynamic_executive_summary(self.analytics_data['risk_analysis'])
+                message_with_context = f"{message}\n\n--- DATOS RELEVANTES ---\n{dynamic_summary}"
+            else:
+                message_with_context = message
+
+            response = self.client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[
+                    {"role": "system", "content": system_context},
+                    {"role": "user", "content": message_with_context}
+                ],
+                temperature=0.7,
+                max_tokens=2000
+            )
+            
+            return response.choices[0].message.content
+            
+        except Exception as e:
+            return f"<div class='error-message'>Error en sistema legacy: {str(e)}</div>"
+    
+    def _convert_json_to_html(self, json_response: Dict[str, Any]) -> str:
+        """Convierte respuesta JSON a HTML para la interfaz actual"""
+        html = "<div class='standardized-response'>"
+        
+        # Resumen ejecutivo
+        if json_response.get("resumen"):
+            html += "<h3>📊 Resumen Ejecutivo</h3><ul>"
+            for item in json_response["resumen"]:
+                html += f"<li><strong>{item}</strong></li>"
+            html += "</ul>"
+        
+        # KPIs
+        if json_response.get("kpis"):
+            html += "<h3>📈 Indicadores Clave (KPIs)</h3>"
+            html += "<table class='kpi-table'><thead><tr><th>KPI</th><th>Valor</th><th>Estado</th><th>Fórmula</th></tr></thead><tbody>"
+            for kpi in json_response["kpis"]:
+                valor = kpi.get("valor", "N/A")
+                estado_icon = "✅" if kpi.get("estado") == "calculado" else "⚠️"
+                html += f"<tr><td><strong>{kpi['nombre']}</strong></td><td>{valor}</td><td>{estado_icon} {kpi.get('estado', '')}</td><td><small>{kpi.get('formula', '')}</small></td></tr>"
+            html += "</tbody></table>"
+        
+        # Tablas
+        if json_response.get("tablas"):
+            html += "<h3>📋 Análisis Detallado</h3>"
+            for tabla in json_response["tablas"]:
+                html += f"<h4>{tabla['titulo']}</h4>"
+                html += "<table class='data-table'><thead><tr>"
+                for col in tabla['columns']:
+                    html += f"<th>{col}</th>"
+                html += "</tr></thead><tbody>"
+                for row in tabla['rows']:
+                    html += "<tr>"
+                    for cell in row:
+                        html += f"<td>{cell}</td>"
+                    html += "</tr>"
+                html += "</tbody></table>"
+        
+        # Gráficos sugeridos
+        if json_response.get("graficos"):
+            html += "<h3>📊 Visualizaciones Recomendadas</h3><ul>"
+            for grafico in json_response["graficos"]:
+                html += f"<li><strong>{grafico['titulo']}</strong> ({grafico['tipo']}) - {grafico.get('descripcion', '')}</li>"
+            html += "</ul>"
+        
+        # Citas de datos
+        if json_response.get("citas_datos"):
+            html += "<h3>🔍 Fuentes de Datos</h3>"
+            for cita in json_response["citas_datos"]:
+                html += f"<div class='data-citation'><strong>Dataset:</strong> {cita['dataset']}<br>"
+                html += f"<strong>SQL:</strong> <code>{cita.get('sql', 'N/A')}</code><br>"
+                html += f"<strong>Filtros:</strong> {json.dumps(cita.get('filtros', {}), ensure_ascii=False)}</div>"
+        
+        # Suposiciones
+        if json_response.get("suposiciones"):
+            html += "<h3>⚠️ Limitaciones y Suposiciones</h3><ul>"
+            for suposicion in json_response["suposiciones"]:
+                html += f"<li>{suposicion}</li>"
+            html += "</ul>"
+        
+        # Próximos pasos
+        if json_response.get("siguientes_pasos"):
+            html += "<h3>🎯 Próximos Pasos Recomendados</h3><ol>"
+            for paso in json_response["siguientes_pasos"]:
+                html += f"<li><strong>{paso}</strong></li>"
+            html += "</ol>"
+        
+        html += "</div>"
+        return html
 
 # Instancia global del consultor
 consultant = None
@@ -225,9 +392,9 @@ def get_consultant():
     """Obtiene instancia del consultor"""
     global consultant
     if consultant is None:
-        api_key = os.getenv('OPENAI_API_KEY')
+        api_key = os.getenv('DEEPSEEK_API_KEY')
         if not api_key:
-            raise ValueError("OPENAI_API_KEY no configurada")
+            raise ValueError("DEEPSEEK_API_KEY no configurada")
         consultant = SSOConsultantEnhanced(api_key)
     return consultant
 
@@ -249,10 +416,10 @@ def index():
         }
 
         :root {
-            --brand-blue: #005387;
-            --brand-blue-dark: #00406a;
-            --brand-green: #237F52;
-            --brand-green-dark: #1e6a43;
+            --brand-blue: #1e88e5;
+            --brand-blue-dark: #1976d2;
+            --brand-green: #00bcd4;
+            --brand-green-dark: #0097a7;
             --text-inverse: #ffffff;
         }
 
@@ -476,22 +643,28 @@ def index():
         
         .send-button {
             padding: 15px 30px;
-            background: var(--brand-blue);
+            background: linear-gradient(135deg, var(--brand-blue) 0%, var(--brand-green) 100%);
             color: var(--text-inverse);
             border: none;
             border-radius: 10px;
             cursor: pointer;
             font-size: 16px;
             font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
         .send-button:hover {
-            background: var(--brand-blue-dark);
+            background: linear-gradient(135deg, var(--brand-blue-dark) 0%, var(--brand-green-dark) 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
         
         .send-button:disabled {
             background: #ccc;
             cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
         }
         
         .suggestions {
@@ -502,29 +675,46 @@ def index():
         }
         
         .suggestion-chip {
-            background: #f0f0f0;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            padding: 12px 15px;
+            background: linear-gradient(135deg, var(--brand-blue) 0%, var(--brand-green) 100%);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin: 5px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 0.95em;
             transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             text-align: center;
+            font-weight: 500;
         }
         
         .suggestion-chip:hover {
-            background: var(--brand-blue);
-            color: var(--text-inverse);
+            background: linear-gradient(135deg, var(--brand-blue-dark) 0%, var(--brand-green-dark) 100%);
             transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
         }
         
         .analytics-chip {
-            background: linear-gradient(45deg, #ff6b6b, #feca57);
+            background: linear-gradient(135deg, #1e88e5 0%, #00bcd4 100%);
             color: white;
+            position: relative;
+            overflow: hidden;
         }
         
-        .analytics-chip:hover {
-            background: linear-gradient(45deg, #ff5252, #ffb300);
+        .analytics-chip::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: 0.5s;
+        }
+        
+        .analytics-chip:hover::before {
+            left: 100%;
         }
         
         table:not(.risk-table) {
@@ -563,33 +753,28 @@ def index():
         </div>
         
         <div class="analytics-status" id="analyticsStatus">
-            <strong>🔄 Cargando estado analítico...</strong>
+            <strong>📊 Dashboard Ejecutivo SSO</strong><br>
+            <span id="statusText">🔄 Cargando indicadores...</span>
         </div>
         
         <div class="suggestions">
-            <div class="suggestion-chip" onclick="sendMessage('Mi empresa tiene 50 trabajadores, ¿qué obligaciones SST tenemos?')">
-                🏢 Obligaciones por tamaño
+            <div class="suggestion-chip analytics-chip" onclick="sendMessage('Dame un resumen ejecutivo del estado actual de seguridad')">
+                📋 Resumen Ejecutivo
             </div>
-            <div class="suggestion-chip analytics-chip" onclick="sendMessage('Basándote en nuestros datos de accidentes, ¿qué áreas presentan mayor riesgo?')">
-                📊 Análisis de riesgos por área
+            <div class="suggestion-chip analytics-chip" onclick="sendMessage('¿Cuáles son mis principales riesgos operativos?')">
+                ⚠️ Riesgos Críticos
             </div>
-            <div class="suggestion-chip analytics-chip" onclick="sendMessage('¿Cuál es la predicción de riesgo para este mes basada en datos históricos?')">
-                🔮 Predicción de riesgos
+            <div class="suggestion-chip analytics-chip" onclick="sendMessage('¿Qué acciones debo tomar este mes para reducir accidentes?')">
+                🎯 Plan de Acción
             </div>
-            <div class="suggestion-chip analytics-chip" onclick="sendMessage('¿Qué medidas preventivas recomiendas basándote en los patrones de accidentes?')">
-                🛡️ Recomendaciones preventivas
+            <div class="suggestion-chip analytics-chip" onclick="sendMessage('¿Cómo está mi empresa vs benchmarks de la industria?')">
+                📊 Benchmarking
             </div>
-            <div class="suggestion-chip" onclick="sendMessage('¿Qué multas aplican por no tener comité de SST?')">
-                💰 Multas y sanciones
+            <div class="suggestion-chip" onclick="sendMessage('¿Qué obligaciones legales tengo pendientes?')">
+                ⚖️ Cumplimiento Legal
             </div>
-            <div class="suggestion-chip analytics-chip" onclick="sendMessage('Analiza las tendencias temporales de accidentes y sugiere controles')">
-                📈 Análisis temporal
-            </div>
-            <div class="suggestion-chip" onclick="showDataDictionary()">
-                📚 Ver Diccionario de Datos
-            </div>
-            <div class="suggestion-chip analytics-chip" onclick="sendMessage('Genera un resumen ejecutivo dinámico de los datos')">
-                📄 Resumen Ejecutivo Dinámico
+            <div class="suggestion-chip analytics-chip" onclick="sendMessage('¿Cuánto me están costando los accidentes laborales?')">
+                💰 Impacto Financiero
             </div>
         </div>
         
@@ -626,18 +811,20 @@ def index():
             .then(response => response.json())
             .then(data => {
                 const statusDiv = document.getElementById('analyticsStatus');
-                const format = v => (v !== null && v !== undefined ? v.toFixed(2) : 'N/A');
                 if (data.status === 'Available') {
-                    const k = data.safety_kpis || {};
+                    const riskLevel = data.current_risk.risk_level;
+                    const riskColor = riskLevel === 'HIGH' ? '#ffebee' : riskLevel === 'MEDIUM' ? '#fff3e0' : '#e8f5e8';
+                    const riskIcon = riskLevel === 'HIGH' ? '🔴' : riskLevel === 'MEDIUM' ? '🟡' : '🟢';
+                    
                     statusDiv.innerHTML = `
-                        <strong>✅ Sistema Analítico Activo</strong><br>
-                        📊 ${data.summary.total_records} registros procesados |
-                        🎯 Riesgo actual: ${data.current_risk.risk_level} (${(data.current_risk.confidence * 100).toFixed(1)}% confianza)<br>
-                        IR: ${format(k.incident_rate)} | SR: ${format(k.severity_rate)} | DART: ${format(k.dart_rate)}
+                        <strong>📊 Dashboard Ejecutivo SSO</strong><br>
+                        ${riskIcon} <strong>Estado de Riesgo: ${riskLevel}</strong> | 
+                        📈 ${data.summary.total_records} incidentes analizados | 
+                        🎯 Confianza: ${(data.current_risk.confidence * 100).toFixed(0)}%
                     `;
-                    statusDiv.style.background = '#e8f5e8';
+                    statusDiv.style.background = riskColor;
                 } else {
-                    statusDiv.innerHTML = '<strong>⚠️ Sistema analítico no disponible - Funcionando en modo básico</strong>';
+                    statusDiv.innerHTML = '<strong>📊 Dashboard Ejecutivo SSO</strong><br>⚠️ Análisis en modo básico - Datos limitados';
                     statusDiv.style.background = '#fff3cd';
                 }
             })
@@ -674,7 +861,7 @@ def index():
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ message: message })
+                body: JSON.stringify({ prompt: message })
             })
             .then(response => response.json())
             .then(data => {
@@ -738,13 +925,13 @@ def chat():
     """Endpoint para consultas"""
     try:
         data = request.get_json()
-        message = data.get('message', '').strip()
+        prompt = data.get('prompt', '').strip()
 
-        if not message:
+        if not prompt:
             return jsonify({'error': 'Mensaje requerido'}), 400
 
         consultant = get_consultant()
-        response = consultant.process_query(message)
+        response = consultant.process_query(prompt)
 
         return jsonify({'response': response})
 
@@ -776,9 +963,9 @@ def data_dictionary():
 
 if __name__ == '__main__':
     try:
-        api_key = os.getenv('OPENAI_API_KEY')
+        api_key = os.getenv('DEEPSEEK_API_KEY')
         if not api_key:
-            print("❌ Error: OPENAI_API_KEY no configurada en .env")
+            print("❌ Error: DEEPSEEK_API_KEY no configurada en .env")
             exit(1)
         
         print("🚀 Iniciando SSO Consultant Enhanced...")

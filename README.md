@@ -16,15 +16,17 @@ Sistema avanzado de consultoría en Seguridad y Salud Ocupacional que combina no
    cd /Users/dasalazarr/Projects/n8n
    ```
 
-2. **Configurar API Key de OpenAI**
+2. **Configurar API Key de DeepSeek**
    
    Edita el archivo `.env` y coloca tu API key real:
    ```bash
-   # Configuración SSO Consultant
-   OPENAI_API_KEY=tu_api_key_real_aqui
+   # Configuración SSO Consultant con DeepSeek API
+   DEEPSEEK_API_KEY=tu_deepseek_api_key_aqui
    FLASK_ENV=development
    FLASK_DEBUG=True
    ```
+   
+   **Nota**: El sistema ahora usa DeepSeek API (más económico y eficiente) en lugar de OpenAI.
 
 3. **Crear entorno virtual e instalar dependencias**
    ```bash
