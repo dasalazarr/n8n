@@ -25,12 +25,28 @@ class ResponseBuilder:
             self.all_indicators = self.indicators.calculate_all_indicators()
         
         # Construir respuesta según intención
-        if intent == "DATA":
-            return self._build_data_response(query, requested_analyses)
-        elif intent == "LEGAL":
+        #
+        # El sistema original siempre devolvía _build_mixed_response() cuando la
+        # intención era "MIXED" (valor por defecto). Esto generaba respuestas
+        # genéricas sin importar el contenido de la consulta.  Para corregirlo
+        # evaluamos primero si se requiere una respuesta legal explícita y, en
+        # cualquier otro caso, delegamos en _build_data_response(), que ya
+        # contiene la lógica contextual para seleccionar el método adecuado
+        # (benchmark, costos, riesgos, etc.).
+
+        if intent == "LEGAL":
             return self._build_legal_response(query)
-        else:  # MIXED
-            return self._build_mixed_response(query, requested_analyses)
+
+        # Para intents "DATA" y "MIXED" utilizamos la misma ruta de datos.
+        response = self._build_data_response(query, requested_analyses)
+
+        # Si se solicitó un análisis mixto, añadimos citas normativas para
+        # complementar la respuesta contextual generada por _build_data_response
+        # sin recurrir al flujo genérico.
+        if intent == "MIXED":
+            response.setdefault("citas_normativas", self._generate_legal_citations())
+
+        return response
     
     def _build_data_response(self, query: str, requested_analyses: Optional[List[str]]) -> Dict[str, Any]:
         """Construye respuesta enfocada en datos con personalización contextual"""
@@ -221,12 +237,6 @@ class ResponseBuilder:
                 "Seguimiento de métricas relevantes"
             ]
         }
-        
-        # Si no se detecta análisis específico, incluir resumen general
-        if not relevant_analyses:
-            relevant_analyses = ["volumen", "perfil", "impacto"]
-        
-        return self._generate_response_structure(query, relevant_analyses, include_legal=False)
     
     def _build_standard_kpis(self) -> List[Dict[str, Any]]:
         """Construye KPIs estándar para respuestas generales"""
