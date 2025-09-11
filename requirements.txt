@@ -37,3 +37,6 @@ python-dateutil==2.8.2
 # Utilidades ML
 joblib==1.3.2
 tiktoken==0.7.0
+
+# Procesamiento de PDF
+pdfplumber==0.11.0
