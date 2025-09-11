@@ -24,3 +24,91 @@ wheels/
 venv/
 ENV/
 venv_*/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Local development
+*.log
+
+# Data files (if you have large data files, consider mounting them as volumes)
+*.csv
+*.xlsx
+*.xls
+*.db
+*.sqlite3
+
+# Test files
+test_*.py
+
+# Documentation
+/docs/
+*.md
+!README.md
+
+# Build files
+Dockerfile
+.dockerignore
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Application specific
+instance/
+.webassets-cache
+
+# Coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Local development settings
+local_settings.py
+db.sqlite3
+
+# Debug logs
+debug.log
+
+# Production
+.env.prod
+
+# Local development overrides
+.env.local
+
+# IDE specific
+.ropeproject
+.project
+.pydevproject
+.settings/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

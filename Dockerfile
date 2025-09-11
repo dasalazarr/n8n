@@ -20,7 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
 
-# Install Python dependencies
+# Install Python dependencies including Gunicorn
+RUN pip install --no-cache-dir gunicorn==21.2.0
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application
@@ -40,8 +41,10 @@ USER appuser
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:10000/health || exit 1
 
-# Make the start script executable
-RUN chmod +x /app/start.sh
+# Make the start script executable and set permissions
+RUN chmod +x /app/start.sh && \
+    chown -R appuser:appuser /app
 
 # Run the application using the start script
+USER appuser
 CMD ["/app/start.sh"]
