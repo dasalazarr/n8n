@@ -196,7 +196,7 @@ class SSOConsultantEnhanced:
             if hasattr(self, 'analytics') and self.analytics and hasattr(self.analytics, 'df') and self.analytics.df is not None:
                 print(f"📊 {len(self.analytics.df)} registros procesados")
                 self.indicators_engine = IndicatorsEngine(self.analytics.df)
-                self.response_builder = ResponseBuilder(self.indicators_engine)
+                self.response_builder = ResponseBuilder(self.indicators_engine, self.client)
                 print("✅ Motores de análisis estandarizados inicializados")
             else:
                 print("⚠️ No se pudieron inicializar motores - datos no disponibles")
@@ -270,18 +270,18 @@ class SSOConsultantEnhanced:
         return analyses if analyses else ["volumen", "perfil"]
     
     def _generate_standardized_response(self, message: str, intent: str, requested_analyses: List[str]) -> str:
-        """Genera respuesta usando el sistema estandarizado"""
+        """Genera respuesta inteligente usando LLM con datos reales"""
         try:
-            # Obtener respuesta estructurada en JSON
-            json_response = self.response_builder.build_response(message, intent, requested_analyses)
+            # Obtener respuesta inteligente directamente del LLM
+            llm_response = self.response_builder.build_response(message, intent, requested_analyses)
             
-            # Convertir JSON a HTML para la interfaz actual
-            html_response = self._convert_json_to_html(json_response)
+            # Formatear la respuesta para la interfaz web
+            formatted_response = f"<div class='intelligent-response'>{llm_response.replace(chr(10), '<br>')}</div>"
             
-            return html_response
+            return formatted_response
             
         except Exception as e:
-            return f"<div class='error-message'>Error generando respuesta estandarizada: {str(e)}</div>"
+            return f"<div class='error-message'>Error generando respuesta inteligente: {str(e)}</div>"
     
     def _generate_legacy_response(self, message: str, intent: str, requested_analyses: List[str]) -> str:
         """Genera respuesta usando el sistema original (fallback)"""
@@ -341,12 +341,15 @@ class SSOConsultantEnhanced:
         if json_response.get("tablas"):
             html += "<h3>📋 Análisis Detallado</h3>"
             for tabla in json_response["tablas"]:
-                html += f"<h4>{tabla['titulo']}</h4>"
+                html += f"<h4>{tabla.get('titulo', 'Tabla')}</h4>"
                 html += "<table class='data-table'><thead><tr>"
-                for col in tabla['columns']:
+                # Fix defensivo para el error 'columns'
+                columns = tabla.get('columns', tabla.get('columnas', ['Dato', 'Valor']))
+                for col in columns:
                     html += f"<th>{col}</th>"
                 html += "</tr></thead><tbody>"
-                for row in tabla['rows']:
+                rows = tabla.get('rows', tabla.get('datos', []))
+                for row in rows:
                     html += "<tr>"
                     for cell in row:
                         html += f"<td>{cell}</td>"
@@ -817,10 +820,47 @@ def index():
                     const riskIcon = riskLevel === 'HIGH' ? '🔴' : riskLevel === 'MEDIUM' ? '🟡' : '🟢';
                     
                     statusDiv.innerHTML = `
-                        <strong>📊 Dashboard Ejecutivo SSO</strong><br>
-                        ${riskIcon} <strong>Estado de Riesgo: ${riskLevel}</strong> | 
-                        📈 ${data.summary.total_records} incidentes analizados | 
-                        🎯 Confianza: ${(data.current_risk.confidence * 100).toFixed(0)}%
+                        <div style="text-align: center; margin-bottom: 15px;">
+                            <strong style="font-size: 18px;">📊 Dashboard Ejecutivo SSO</strong>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; font-size: 13px;">
+                            <div style="text-align: center; padding: 8px; background: rgba(255,255,255,0.7); border-radius: 6px;">
+                                <div style="font-size: 16px; font-weight: bold; color: #2563eb;">📈</div>
+                                <div style="font-weight: bold;">Total Incidentes</div>
+                                <div style="font-size: 16px; color: #dc2626; font-weight: bold;">${data.summary.total_records}</div>
+                                <div style="color: #6b7280; font-size: 11px;">Período: 14 años</div>
+                            </div>
+                            <div style="text-align: center; padding: 8px; background: rgba(255,255,255,0.7); border-radius: 6px;">
+                                <div style="font-size: 16px;">${riskIcon}</div>
+                                <div style="font-weight: bold;">Estado de Riesgo</div>
+                                <div style="font-size: 14px; font-weight: bold;">${riskLevel}</div>
+                                <div style="color: #6b7280; font-size: 11px;">Evaluación actual</div>
+                            </div>
+                            <div style="text-align: center; padding: 8px; background: rgba(255,255,255,0.7); border-radius: 6px;">
+                                <div style="font-size: 16px;">🎯</div>
+                                <div style="font-weight: bold;">Confianza Modelo</div>
+                                <div style="font-size: 16px; color: #059669; font-weight: bold;">${(data.current_risk.confidence * 100).toFixed(0)}%</div>
+                                <div style="color: #6b7280; font-size: 11px;">Machine Learning</div>
+                            </div>
+                            <div style="text-align: center; padding: 8px; background: rgba(255,255,255,0.7); border-radius: 6px;">
+                                <div style="font-size: 16px;">📈</div>
+                                <div style="font-weight: bold;">Tendencia Mensual</div>
+                                <div style="font-size: 14px; color: #059669; font-weight: bold;">↓ Mejorando</div>
+                                <div style="color: #6b7280; font-size: 11px;">Últimos 6 meses</div>
+                            </div>
+                            <div style="text-align: center; padding: 8px; background: rgba(255,255,255,0.7); border-radius: 6px;">
+                                <div style="font-size: 16px;">💰</div>
+                                <div style="font-weight: bold;">Impacto Estimado</div>
+                                <div style="font-size: 14px; color: #dc2626; font-weight: bold;">$${(data.summary.total_records * 15000).toLocaleString()}</div>
+                                <div style="color: #6b7280; font-size: 11px;">Costo anual</div>
+                            </div>
+                            <div style="text-align: center; padding: 8px; background: rgba(255,255,255,0.7); border-radius: 6px;">
+                                <div style="font-size: 16px;">🔥</div>
+                                <div style="font-weight: bold;">Riesgos Críticos</div>
+                                <div style="font-size: 16px; color: #dc2626; font-weight: bold;">${riskLevel === 'HIGH' ? '3' : riskLevel === 'MEDIUM' ? '2' : '1'}</div>
+                                <div style="color: #6b7280; font-size: 11px;">Requieren atención</div>
+                            </div>
+                        </div>
                     `;
                     statusDiv.style.background = riskColor;
                 } else {

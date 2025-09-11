@@ -14,9 +14,16 @@ class IndicatorsEngine:
     """Motor de cálculo de indicadores SSO estandarizados"""
     
     def __init__(self, df: pd.DataFrame, denominators_table: Optional[pd.DataFrame] = None):
-        self.df = df
+        self.df = df if df is not None else pd.DataFrame()
         self.denominators = denominators_table
         self.indicators = {}
+        
+        # Validar que el DataFrame tenga la estructura esperada
+        if self.df.empty:
+            print("⚠️  Warning: DataFrame vacío en IndicatorsEngine")
+        elif not hasattr(self.df, 'columns'):
+            print("⚠️  Warning: DataFrame sin atributo 'columns'")
+            self.df = pd.DataFrame()
         
     def calculate_all_indicators(self) -> Dict[str, Any]:
         """Calcula todos los indicadores disponibles"""

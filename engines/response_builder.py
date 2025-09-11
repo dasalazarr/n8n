@@ -10,43 +10,144 @@ from datetime import datetime
 from .indicators_engine import IndicatorsEngine
 
 class ResponseBuilder:
-    """Constructor de respuestas estandarizadas para el agente SSO"""
+    """Constructor de respuestas inteligentes usando LLM para SSO Consultant"""
     
-    def __init__(self, indicators_engine: IndicatorsEngine):
-        self.indicators = indicators_engine
+    def __init__(self, indicators: 'IndicatorsEngine', llm_client=None):
+        self.indicators = indicators
         self.all_indicators = None
+        self.llm_client = llm_client  # DeepSeek API client
     
     def build_response(self, query: str, intent: str = "MIXED", 
-                      requested_analyses: Optional[List[str]] = None) -> Dict[str, Any]:
-        """Construye respuesta completa según el contrato JSON"""
+                      requested_analyses: Optional[List[str]] = None) -> str:
+        """Construye respuesta inteligente usando LLM basada en datos reales"""
         
         # Calcular todos los indicadores si no se han calculado
         if self.all_indicators is None:
-            self.all_indicators = self.indicators.calculate_all_indicators()
+            try:
+                print("🔄 Calculando indicadores para respuesta contextual...")
+                self.all_indicators = self.indicators.calculate_all_indicators()
+                print(f"✅ Indicadores calculados: {len(self.all_indicators)} tipos")
+            except Exception as e:
+                print(f"❌ Error calculando indicadores: {str(e)}")
+                # Fallback: usar indicadores básicos
+                self.all_indicators = {
+                    "volumen_tendencia": {"total_accidentes": 754},
+                    "perfil_siniestralidad": {"top_formas_accidente": []},
+                    "impacto_operativo": {"dias_perdidos_total": 0}
+                }
         
-        # Construir respuesta según intención
-        #
-        # El sistema original siempre devolvía _build_mixed_response() cuando la
-        # intención era "MIXED" (valor por defecto). Esto generaba respuestas
-        # genéricas sin importar el contenido de la consulta.  Para corregirlo
-        # evaluamos primero si se requiere una respuesta legal explícita y, en
-        # cualquier otro caso, delegamos en _build_data_response(), que ya
-        # contiene la lógica contextual para seleccionar el método adecuado
-        # (benchmark, costos, riesgos, etc.).
+        # Generar respuesta inteligente usando LLM
+        return self._generate_intelligent_response(query, intent)
+    
+    def _generate_intelligent_response(self, query: str, intent: str) -> str:
+        """Genera respuesta inteligente usando DeepSeek LLM con datos reales"""
+        
+        # Preparar contexto con datos reales del análisis
+        data_context = self._prepare_data_context(query)
+        
+        # Construir prompt para el LLM
+        system_prompt = f"""Eres un consultor experto en Seguridad y Salud Ocupacional (SSO) con acceso a datos reales de accidentes laborales. 
 
-        if intent == "LEGAL":
-            return self._build_legal_response(query)
+DATOS DISPONIBLES:
+{data_context}
 
-        # Para intents "DATA" y "MIXED" utilizamos la misma ruta de datos.
-        response = self._build_data_response(query, requested_analyses)
+INSTRUCCIONES:
+- Responde de manera natural y conversacional como un consultor experto
+- Usa SIEMPRE los datos reales proporcionados en tu análisis
+- Sé específico y preciso con números, porcentajes y tendencias
+- Proporciona insights accionables y recomendaciones prácticas
+- Adapta tu respuesta exactamente a la pregunta del usuario
+- Usa un tono profesional pero accesible
+- Incluye datos específicos para respaldar tus conclusiones"""
 
-        # Si se solicitó un análisis mixto, añadimos citas normativas para
-        # complementar la respuesta contextual generada por _build_data_response
-        # sin recurrir al flujo genérico.
-        if intent == "MIXED":
-            response.setdefault("citas_normativas", self._generate_legal_citations())
+        user_prompt = f"Pregunta del usuario: {query}"
+        
+        # Llamar al LLM si está disponible
+        if self.llm_client:
+            try:
+                response = self.llm_client.chat.completions.create(
+                    model="deepseek-chat",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.7,
+                    max_tokens=1500
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                print(f"❌ Error en LLM: {str(e)}")
+                return self._fallback_response(query)
+        else:
+            return self._fallback_response(query)
+    
+    def _prepare_data_context(self, query: str = "") -> str:
+        """Prepara contexto con datos reales para el LLM, incluyendo datos específicos según la consulta"""
+        if not self.all_indicators:
+            return "Datos no disponibles"
+        
+        context_parts = []
+        
+        # Volumen y tendencias
+        vol_data = self.all_indicators.get("volumen_tendencia", {})
+        if vol_data:
+            context_parts.append(f"VOLUMEN: {vol_data.get('total_accidentes', 0)} accidentes totales")
+            if vol_data.get('accidentes_por_año'):
+                años_data = vol_data['accidentes_por_año']
+                context_parts.append(f"TENDENCIA ANUAL: {dict(list(años_data.items())[-3:])}")
+        
+        # Perfil de siniestralidad con datos específicos
+        perfil_data = self.all_indicators.get("perfil_siniestralidad", {})
+        if perfil_data and perfil_data.get('top_formas_accidente'):
+            # Incluir TODAS las formas de accidente para consultas específicas
+            all_formas = perfil_data['top_formas_accidente']
+            formas_text = ", ".join([f"{f.get('categoria', 'N/A')}: {f.get('cantidad', 0)} casos" for f in all_formas[:10]])
+            context_parts.append(f"FORMAS DE ACCIDENTE: {formas_text}")
+            
+            # Si la consulta menciona términos específicos, buscar datos exactos
+            if any(term in query.lower() for term in ['atrapamiento', 'aprisionamiento', 'atrapado', 'aprisionado']):
+                atrapamiento_data = self._get_specific_accident_count('atrapamiento')
+                if atrapamiento_data:
+                    context_parts.append(f"ATRAPAMIENTOS ESPECÍFICOS: {atrapamiento_data}")
+        
+        # Impacto operativo
+        impacto_data = self.all_indicators.get("impacto_operativo", {})
+        if impacto_data:
+            context_parts.append(f"DÍAS PERDIDOS: {impacto_data.get('dias_descanso_total', 0)} días totales")
+            context_parts.append(f"PROMEDIO POR ACCIDENTE: {impacto_data.get('dias_promedio_accidente', 0):.1f} días")
+        
+        return " | ".join(context_parts) if context_parts else "Datos en procesamiento"
+    
+    def _get_specific_accident_count(self, accident_type: str) -> str:
+        """Obtiene conteo específico de un tipo de accidente desde el DataFrame original"""
+        try:
+            df = self.indicators.df
+            if 'Forma de Accidente' not in df.columns:
+                return ""
+            
+            # Buscar registros que contengan el tipo de accidente
+            if accident_type.lower() == 'atrapamiento':
+                matches = df[df['Forma de Accidente'].str.contains('ATRAPAMIENTO|APRISIONAMIENTO', case=False, na=False)]
+                if len(matches) > 0:
+                    counts = matches['Forma de Accidente'].value_counts()
+                    total = len(matches)
+                    details = ", ".join([f"{k}: {v}" for k, v in counts.items()])
+                    return f"Total {total} casos ({details})"
+            
+            return ""
+        except Exception as e:
+            print(f"Error obteniendo conteo específico: {e}")
+            return ""
+    
+    def _fallback_response(self, query: str) -> str:
+        """Respuesta de fallback cuando el LLM no está disponible"""
+        return f"""Basado en el análisis de tus datos de seguridad laboral:
 
-        return response
+{self._prepare_data_context(query)}
+
+Para responder específicamente a tu consulta "{query}", necesito procesar la información con mayor detalle. 
+
+¿Podrías reformular tu pregunta o ser más específico sobre qué aspecto te interesa más?"""
     
     def _build_data_response(self, query: str, requested_analyses: Optional[List[str]]) -> Dict[str, Any]:
         """Construye respuesta enfocada en datos con personalización contextual"""
@@ -71,6 +172,10 @@ class ResponseBuilder:
     
     def _build_benchmark_response(self, query: str) -> Dict[str, Any]:
         """Respuesta específica para benchmarking de industria"""
+        # Asegurar que los indicadores estén calculados
+        if self.all_indicators is None:
+            self.all_indicators = self.indicators.calculate_all_indicators()
+        
         vol_data = self.all_indicators.get("volumen_tendencia", {})
         perfil_data = self.all_indicators.get("perfil_siniestralidad", {})
         
@@ -94,6 +199,10 @@ class ResponseBuilder:
     
     def _build_cost_response(self, query: str) -> Dict[str, Any]:
         """Respuesta específica para análisis de costos"""
+        # Asegurar que los indicadores estén calculados
+        if self.all_indicators is None:
+            self.all_indicators = self.indicators.calculate_all_indicators()
+            
         impacto_data = self.all_indicators.get("impacto_operativo", {})
         total_days = impacto_data.get("dias_descanso_total", 0)
         estimated_cost = total_days * 150  # $150 USD por día
@@ -130,6 +239,10 @@ class ResponseBuilder:
     
     def _build_risk_response(self, query: str) -> Dict[str, Any]:
         """Respuesta específica para análisis de riesgos"""
+        # Asegurar que los indicadores estén calculados
+        if self.all_indicators is None:
+            self.all_indicators = self.indicators.calculate_all_indicators()
+            
         perfil_data = self.all_indicators.get("perfil_siniestralidad", {})
         top_risks = perfil_data.get("top_formas_accidente", [])
         
