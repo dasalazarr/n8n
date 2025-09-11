@@ -1,0 +1,67 @@
+# Version control
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+venv_*/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Local development
+*.log
+
+# Data files (if you have large data files, consider mounting them as volumes)
+*.csv
+*.xlsx
+*.xls
+*.db
+*.sqlite3
+
+# Test files
+test_*.py
+
+# Documentation
+/docs/
+*.md
+!README.md
+
+# Build files
+Dockerfile
+.dockerignore
+
+# System files
+.DS_Store
+Thumbs.db

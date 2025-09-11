@@ -991,6 +991,27 @@ def analytics_status():
     except Exception as e:
         return jsonify({"status": "Error", "message": str(e)})
 
+@app.route('/health')
+def health_check():
+    """Health check endpoint for container monitoring"""
+    try:
+        # Check if the consultant is initialized
+        consultant = get_consultant()
+        if consultant is None:
+            return jsonify({"status": "error", "message": "Consultant not initialized"}), 500
+            
+        # Check if we can access the analytics data
+        if not hasattr(consultant, 'analytics') or consultant.analytics is None:
+            return jsonify({"status": "error", "message": "Analytics not initialized"}), 500
+            
+        return jsonify({
+            "status": "healthy",
+            "version": "1.0.0",
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/data-dictionary')
 def data_dictionary():
     """Endpoint para obtener el diccionario de datos"""
