@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: sso-consultant
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn sso_enhanced:app
+    envVars:
+      - key: DEEPSEEK_API_KEY
+        fromService:
+          name: deepseek-api-key
+          type: secret
+    plan: free
