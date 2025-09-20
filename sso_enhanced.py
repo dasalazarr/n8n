@@ -12,9 +12,6 @@ from accident_analytics import AccidentAnalytics
 import json
 from datetime import datetime
 from typing import Dict, List, Any
-import pdfplumber
-import glob
-# from knowledge_base import KnowledgeBase
 from engines.indicators_engine import IndicatorsEngine
 from engines.response_builder import ResponseBuilder
 
@@ -32,7 +29,6 @@ class SSOConsultantEnhanced:
             base_url="https://api.deepseek.com"
         )
         self.analytics = AccidentAnalytics()
-        self.knowledge_base = None  # KnowledgeBase(self.client)
         self.analytics_data = None
         self.indicators_engine = None
         self.response_builder = None
@@ -40,8 +36,6 @@ class SSOConsultantEnhanced:
         
         # Cargar datos analíticos y normativos al inicio
         self._load_analytics_data()
-        # if self.knowledge_base:
-        #     self.knowledge_base.build()
         self._initialize_analytics_engines()
     
     def _load_analytics_data(self):
@@ -92,9 +86,6 @@ class SSOConsultantEnhanced:
         """
 
         # Contexto Normativo Relevante (RAG)
-        # relevant_context = self.knowledge_base.retrieve_relevant_chunks(query)
-        # if relevant_context:
-        #     base_context += relevant_context
 
         # Contexto Analítico
         if include_analytics and self.analytics_data:
@@ -410,7 +401,7 @@ def index():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SSO Consultant Enhanced - Analytics Predictivo</title>
+    <title>OrquestAI</title>
     <style>
         * {
             margin: 0;
@@ -426,27 +417,33 @@ def index():
             --text-inverse: #ffffff;
         }
 
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* Prevent body scroll */
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, var(--brand-blue) 0%, var(--brand-green) 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
         }
         
         .container {
             background: white;
-            border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            width: 95%;
+            width: 100%;
             max-width: 1000px;
+            height: 100vh;
+            margin: 0 auto;
             padding: 30px;
+            display: flex;
+            flex-direction: column;
         }
         
         .header {
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 0;
         }
         
         .header h1 {
@@ -472,10 +469,36 @@ def index():
             margin-bottom: 20px;
         }
         
+        .badges-container {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 15px 0;
+        }
+        
+        .badge {
+            background: rgba(30, 136, 229, 0.1);
+            color: var(--brand-blue);
+            padding: 6px 12px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            font-weight: 500;
+            border: 1px solid rgba(30, 136, 229, 0.3);
+            white-space: nowrap;
+            transition: all 0.2s ease;
+        }
+        
+        .badge:hover {
+            background: rgba(30, 136, 229, 0.15);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
         .chat-container {
             border: 2px solid #e0e0e0;
             border-radius: 15px;
-            height: 400px;
+            flex-grow: 1; /* Allow chat to fill available space */
             overflow-y: auto;
             padding: 20px;
             margin-bottom: 20px;
@@ -503,33 +526,34 @@ def index():
         /* Enhanced HTML Response Formatting Styles */
         .assistant-message h3 {
             color: #2c3e50;
-            border-bottom: 2px solid var(--brand-blue);
-            padding-bottom: 8px;
-            margin-top: 20px;
-            margin-bottom: 15px;
-            font-size: 1.3em;
-        }
 
-        .assistant-message h4 {
-            color: #34495e;
-            margin-top: 15px;
-            margin-bottom: 10px;
-            font-size: 1.1em;
-        }
+.badge {
+    background: rgba(30, 136, 229, 0.1);
+    color: var(--brand-blue);
+    padding: 6px 12px;
+    border-radius: 15px;
+    font-size: 0.8em;
+    font-weight: 500;
+    border: 1px solid rgba(30, 136, 229, 0.3);
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
 
-        .risk-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 15px 0;
-            background: white;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
+.badge:hover {
+    background: rgba(30, 136, 229, 0.15);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
 
-        .risk-table thead {
-            background: linear-gradient(135deg, var(--brand-blue), var(--brand-blue-dark));
-            color: var(--text-inverse);
+.chat-container {
+    border: 2px solid #e0e0e0;
+    border-radius: 15px;
+    height: 400px;
+    overflow-y: auto;
+    padding: 20px;
+    margin-bottom: 20px;
+    background: #f9f9f9;
+}
         }
 
         .risk-table th {
@@ -630,33 +654,125 @@ def index():
             font-style: italic;
         }
         
+        @keyframes marquee {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
         .input-container {
             display: flex;
             gap: 10px;
+            margin-top: 20px;
+        }
+
+        .chat-container {
+            border: 2px solid #e0e0e0;
+            border-radius: 15px;
+            height: 400px;
+            overflow-y: auto;
+            padding: 20px;
             margin-bottom: 20px;
+            background: #f9f9f9;
+        }
+        
+        .suggestions-container {
+            position: relative;
+            overflow: hidden;
+            padding: 12px 15px;
+            margin: 0 0 20px 0;
+            --bg-light: #f9f9f9;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+            background: #f9f9f9;
+            border: 2px solid #e0e0e0;
+            border-radius: 15px;
+            z-index: 1;
+            height: 60px; /* Fixed height for better control */
+            display: flex;
+            align-items: center;
+        }
+        
+        .suggestions-container::-webkit-scrollbar {
+            display: none; /* Hide scrollbar for Chrome, Safari and Opera */
+        }
+
+        .suggestions-container::before, .suggestions-container::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100px; /* Widen the gradient for a softer fade */
+            z-index: 2;
+        }
+
+        .suggestions-container::before {
+            left: 0;
+            background: linear-gradient(to right, var(--bg-light) 20%, transparent);
+        }
+
+        .suggestions-container::after {
+            right: 0;
+            background: linear-gradient(to left, var(--bg-light) 20%, transparent);
+        }
+
+        .suggestions-track {
+            display: inline-flex;
+            white-space: nowrap;
+            padding: 0 10px;
+            gap: 12px;
+            animation: marquee 40s linear infinite;
+            min-width: 100%;
+            align-items: center;
+            height: 100%;
+        }
+        
+        .suggestions-track:hover {
+            animation-play-state: paused;
+        }
+
+        .suggestion-chip {
+            flex-shrink: 0;
+            padding: 6px 14px;
+            background: #e8f0fe;
+            border-radius: 20px;
+            color: #1a73e8;
+            font-size: 0.9em;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid #d2e3fc;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            height: 36px;
+        }
+        
+        .suggestion-chip:hover {
+            background: #d2e3fc;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
         }
         
         .input-field {
             flex: 1;
-            padding: 15px;
+            padding: 16px;
             border: 2px solid #e0e0e0;
-            border-radius: 10px;
-            font-size: 16px;
+            border-radius: 12px;
+            font-size: 1.05em;
         }
         
         .send-button {
-            padding: 15px 30px;
+            padding: 16px 30px;
             background: linear-gradient(135deg, var(--brand-blue) 0%, var(--brand-green) 100%);
             color: var(--text-inverse);
             border: none;
-            border-radius: 10px;
+            border-radius: 12px;
             cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
+            font-size: 1.05em;
             transition: all 0.3s ease;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            font-weight: 600;
+            letter-spacing: 0.5px;
         }
-
+        
         .send-button:hover {
             background: linear-gradient(135deg, var(--brand-blue-dark) 0%, var(--brand-green-dark) 100%);
             transform: translateY(-2px);
@@ -750,9 +866,14 @@ def index():
 <body>
     <div class="container">
         <div class="header">
-            <h1>🛡️ SSO Consultant Enhanced</h1>
-            <p class="subtitle">Sistema de Consultoría SSO con Analytics Predictivo</p>
-            <div class="analytics-badge">🔮 Powered by Machine Learning & Data Analytics</div>
+            <h1>OrquestAI</h1>
+            <p class="subtitle">Cerebro Empresarial Operativo v1</p>
+            <div class="badges-container">
+                <span class="badge">Strict-RAG por país</span>
+                <span class="badge">Deepseek + OpenAI</span>
+                <span class="badge">LLM Privado y Seguro</span>
+                <span class="badge">Auditoría & RBAC</span>
+            </div>
         </div>
         
         <div class="analytics-status" id="analyticsStatus">
@@ -760,24 +881,21 @@ def index():
             <span id="statusText">🔄 Cargando indicadores...</span>
         </div>
         
-        <div class="suggestions">
-            <div class="suggestion-chip analytics-chip" onclick="sendMessage('Dame un resumen ejecutivo del estado actual de seguridad')">
-                📋 Resumen Ejecutivo
-            </div>
-            <div class="suggestion-chip analytics-chip" onclick="sendMessage('¿Cuáles son mis principales riesgos operativos?')">
-                ⚠️ Riesgos Críticos
-            </div>
-            <div class="suggestion-chip analytics-chip" onclick="sendMessage('¿Qué acciones debo tomar este mes para reducir accidentes?')">
-                🎯 Plan de Acción
-            </div>
-            <div class="suggestion-chip analytics-chip" onclick="sendMessage('¿Cómo está mi empresa vs benchmarks de la industria?')">
-                📊 Benchmarking
-            </div>
-            <div class="suggestion-chip" onclick="sendMessage('¿Qué obligaciones legales tengo pendientes?')">
-                ⚖️ Cumplimiento Legal
-            </div>
-            <div class="suggestion-chip analytics-chip" onclick="sendMessage('¿Cuánto me están costando los accidentes laborales?')">
-                💰 Impacto Financiero
+        <div class="suggestions-container">
+            <div class="suggestions-track">
+                <div class="suggestion-chip analytics-chip" onclick="sendMessage('Dame un resumen ejecutivo del estado actual de seguridad')">📋 Resumen Ejecutivo</div>
+                <div class="suggestion-chip analytics-chip" onclick="sendMessage('¿Cuáles son mis principales riesgos operativos?')">⚠️ Riesgos Críticos</div>
+                <div class="suggestion-chip analytics-chip" onclick="sendMessage('¿Qué acciones debo tomar este mes para reducir accidentes?')">🎯 Plan de Acción</div>
+                <div class="suggestion-chip analytics-chip" onclick="sendMessage('¿Cómo está mi empresa vs benchmarks de la industria?')">📊 Benchmarking</div>
+                <div class="suggestion-chip" onclick="sendMessage('¿Qué obligaciones legales tengo pendientes?')">⚖️ Cumplimiento Legal</div>
+                <div class="suggestion-chip analytics-chip" onclick="sendMessage('¿Cuánto me están costando los accidentes laborales?')">💰 Impacto Financiero</div>
+                <!-- Duplicated for seamless scroll -->
+                <div class="suggestion-chip analytics-chip" onclick="sendMessage('Dame un resumen ejecutivo del estado actual de seguridad')">📋 Resumen Ejecutivo</div>
+                <div class="suggestion-chip analytics-chip" onclick="sendMessage('¿Cuáles son mis principales riesgos operativos?')">⚠️ Riesgos Críticos</div>
+                <div class="suggestion-chip analytics-chip" onclick="sendMessage('¿Qué acciones debo tomar este mes para reducir accidentes?')">🎯 Plan de Acción</div>
+                <div class="suggestion-chip analytics-chip" onclick="sendMessage('¿Cómo está mi empresa vs benchmarks de la industria?')">📊 Benchmarking</div>
+                <div class="suggestion-chip" onclick="sendMessage('¿Qué obligaciones legales tengo pendientes?')">⚖️ Cumplimiento Legal</div>
+                <div class="suggestion-chip analytics-chip" onclick="sendMessage('¿Cuánto me están costando los accidentes laborales?')">💰 Impacto Financiero</div>
             </div>
         </div>
         
@@ -803,7 +921,7 @@ def index():
         </div>
         
         <div class="input-container">
-            <input type="text" id="messageInput" class="input-field" placeholder="Pregunta sobre SSO o solicita análisis predictivo..." onkeypress="handleKeyPress(event)">
+            <input type="text" id="messageInput" class="input-field" placeholder="Empieza aquí..." onkeypress="handleKeyPress(event)">
             <button onclick="sendMessage()" class="send-button" id="sendButton">Enviar</button>
         </div>
     </div>
@@ -877,6 +995,7 @@ def index():
                 sendMessage();
             }
         }
+        
         
         function sendMessage(predefinedMessage = null) {
             const input = document.getElementById('messageInput');
