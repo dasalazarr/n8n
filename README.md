@@ -24,6 +24,8 @@ Sistema avanzado de consultoría en Seguridad y Salud Ocupacional que combina no
    DEEPSEEK_API_KEY=tu_deepseek_api_key_aqui
    FLASK_ENV=development
    FLASK_DEBUG=True
+   # Opcional: ruta personalizada al dataset de accidentes
+   ACCIDENT_DATA_PATH=docs/Registro de accidentes laborales EVP - Ago25 (SN).xlsx
    ```
    
    **Nota**: El sistema ahora usa DeepSeek API (más económico y eficiente) en lugar de OpenAI.

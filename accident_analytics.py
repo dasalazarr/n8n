@@ -14,13 +14,21 @@ from sklearn.metrics import classification_report, mean_squared_error
 import joblib
 import os
 import warnings
+from typing import Optional
 warnings.filterwarnings('ignore')
 
 class AccidentAnalytics:
     """Motor de análisis predictivo para accidentes laborales"""
     
-    def __init__(self, excel_path='docs/Registro de accidentes laborales EVP - Ago25 (SN).xlsx'):
-        self.excel_path = excel_path
+    def __init__(
+        self,
+        excel_path: Optional[str] = None,
+    ):
+        default_path = os.getenv(
+            "ACCIDENT_DATA_PATH",
+            'docs/Registro de accidentes laborales EVP - Ago25 (SN).xlsx',
+        )
+        self.excel_path = excel_path or default_path
         self.df = None
         self.risk_model = None
         self.severity_model = None

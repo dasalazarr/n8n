@@ -46,6 +46,7 @@ venv_*/
 # Data files (if you have large data files, consider mounting them as volumes)
 *.csv
 *.xlsx
+!docs/Registro de accidentes laborales EVP - Ago25 (SN).xlsx
 *.xls
 *.db
 *.sqlite3
@@ -54,7 +55,8 @@ venv_*/
 test_*.py
 
 # Documentation
-/docs/
+docs/*
+!docs/Registro de accidentes laborales EVP - Ago25 (SN).xlsx
 *.md
 !README.md
 
